@@ -8,7 +8,10 @@
 
 # balances, transaction history, and loan workflows to provide end-to-end visibility, streamlined 
 
-operations, and adherence to banking regulations.
+# operations, and adherence to banking regulations.
+
+# Roles:
+# CSR, CO, CUSTOMER, LOAN_MANAGER, BRANCH_MANAGER, ADMIN
 
 ===
 
