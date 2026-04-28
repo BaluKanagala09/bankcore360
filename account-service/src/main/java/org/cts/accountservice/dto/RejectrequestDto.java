@@ -1,0 +1,10 @@
+package org.cts.accountservice.dto;
+
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class RejectrequestDto {
+    @NotBlank(message = "Rejection reason is required")
+    private String rejectionReason;
+}
