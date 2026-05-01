@@ -22,6 +22,7 @@ public class TransactionResponse {
     private BigDecimal amount;
     private TransactionType transactionType;
     private TransactionStatus status;
+    private String failureReason;
     private String description;
     private LocalDateTime createdAt;
 }

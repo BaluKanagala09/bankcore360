@@ -5,6 +5,9 @@ spring:
   application:
     name: transaction-service
 
+  config:
+    import: 'optional:configserver:'
+
   datasource:
     url: jdbc:mysql://localhost:3306/transaction_db?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -24,13 +27,23 @@ spring:
     discovery:
       enabled: false
 
-eureka:
-  client:
-    enabled: false
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
+# Feign Client Configuration
+account-service:
+  url: http://localhost:9081
+
+branch-service:
+  url: http://localhost:9082
+
+customer-service:
+  url: http://localhost:9083
+
+#eureka:
+#  client:
+#    enabled: false
+#    service-url:
+#      defaultZone: http://localhost:8761/eureka/
+#  instance:
+#    prefer-ip-address: true
 
 springdoc:
   swagger-ui:

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.cts.transactionservice.enums.AccountStatus;
 import org.cts.transactionservice.enums.AccountType;
 
 import java.math.BigDecimal;
@@ -18,5 +19,6 @@ public class AccountDto {
     private Long branchId;
     private BigDecimal balance;
     private AccountType accountType;
+    private AccountStatus accountStatus;
 }
 

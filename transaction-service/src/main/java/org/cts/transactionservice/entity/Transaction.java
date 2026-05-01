@@ -58,6 +58,8 @@ public class Transaction {
 
     private String description;
 
+    private String failureReason;
+
     @CreationTimestamp
     @Column(updatable = false)
     private LocalDateTime createdAt;

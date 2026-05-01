@@ -13,23 +13,34 @@ import java.util.List;
 @Repository
 public interface TransactionRepository extends JpaRepository<Transaction, Long> {
 
-    // All transactions for a customer (sent or received)
-    @Query("SELECT t FROM Transaction t WHERE t.fromCustomerId = :customerId OR t.toCustomerId = :customerId")
-    List<Transaction> findAllByCustomerId(@Param("customerId") Long customerId);
+    // ── Account-specific queries ────────────────────────────────────────
+    
+    // All transactions for a specific account (sent or received)
+    @Query("SELECT t FROM Transaction t WHERE t.fromAccountId = :accountId OR t.toAccountId = :accountId")
+    List<Transaction> findAllByAccountId(@Param("accountId") Long accountId);
 
-    // Incoming (credit) transactions for a customer
-    List<Transaction> findByToCustomerId(Long toCustomerId);
+    // Incoming (credit) transactions for a specific account
+    List<Transaction> findByToAccountId(Long toAccountId);
 
-    // Outgoing (debit) transactions for a customer
-    List<Transaction> findByFromCustomerId(Long fromCustomerId);
+    // Outgoing (debit) transactions for a specific account
+    List<Transaction> findByFromAccountId(Long fromAccountId);
 
-    // By date range for a specific customer
-    @Query("SELECT t FROM Transaction t WHERE (t.fromCustomerId = :customerId OR t.toCustomerId = :customerId) AND t.createdAt BETWEEN :from AND :to")
-    List<Transaction> findByCustomerIdAndDateRange(
-            @Param("customerId") Long customerId,
+    // Account transactions within a date range (sent or received)
+    @Query("SELECT t FROM Transaction t WHERE (t.fromAccountId = :accountId OR t.toAccountId = :accountId) AND t.createdAt BETWEEN :from AND :to")
+    List<Transaction> findByAccountIdAndCreatedAtBetween(
+            @Param("accountId") Long accountId,
             @Param("from") LocalDateTime from,
             @Param("to") LocalDateTime to);
 
+    // By transaction type for a specific account
+    @Query("SELECT t FROM Transaction t WHERE (t.fromAccountId = :accountId OR t.toAccountId = :accountId) AND t.transactionType = :type")
+    List<Transaction> findByAccountIdAndType(
+            @Param("accountId") Long accountId,
+            @Param("type") TransactionType type);
+
+
+    // ── Branch-specific queries ──────────────────────────────────────────────
+    
     // All transactions involving a branch (sent OR received by that branch)
     @Query("SELECT t FROM Transaction t WHERE t.fromBranchId = :branchId OR t.toBranchId = :branchId")
     List<Transaction> findAllByBranchId(@Param("branchId") Long branchId);
@@ -49,10 +60,4 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
     // All transactions within a date range
     List<Transaction> findByCreatedAtBetween(LocalDateTime from, LocalDateTime to);
-
-    // By transaction type for a customer
-    @Query("SELECT t FROM Transaction t WHERE (t.fromCustomerId = :customerId OR t.toCustomerId = :customerId) AND t.transactionType = :type")
-    List<Transaction> findByCustomerIdAndType(
-            @Param("customerId") Long customerId,
-            @Param("type") TransactionType type);
 }

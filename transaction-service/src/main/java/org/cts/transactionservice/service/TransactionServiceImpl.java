@@ -21,9 +21,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 @RequiredArgsConstructor
@@ -47,11 +48,11 @@ public class TransactionServiceImpl implements TransactionService {
                     "You can only perform transactions from your own account (accountId=" + user.getAccountId() + ")");
         }
 
-        AccountDto fromAccount = accountServiceClient.getAccountById(request.getFromAccountId())
-                .orElseThrow(() -> new AccountNotFoundException("Source account not found: " + request.getFromAccountId()));
+        AccountDto fromAccount = accountServiceClient.getAccountById(request.getFromAccountId());
+//                .orElseThrow(() -> new AccountNotFoundException("Source account not found: " + request.getFromAccountId()));
 
-        AccountDto toAccount = accountServiceClient.getAccountById(request.getToAccountId())
-                .orElseThrow(() -> new AccountNotFoundException("Destination account not found: " + request.getToAccountId()));
+        AccountDto toAccount = accountServiceClient.getAccountById(request.getToAccountId());
+//                .orElseThrow(() -> new AccountNotFoundException("Destination account not found: " + request.getToAccountId()));
 
         if (!branchServiceClient.branchExists(fromAccount.getBranchId())) {
             throw new BranchNotFoundException("Branch not found: " + fromAccount.getBranchId());
@@ -63,8 +64,10 @@ public class TransactionServiceImpl implements TransactionService {
             validateSelfTransfer(fromAccount, toAccount, request);
         }
 
+        String failureReason = validateTransactionCanBeProcessed(fromAccount,request);
+
         Transaction transaction = Transaction.builder()
-                .referenceNumber(UUID.randomUUID().toString())
+                .referenceNumber(generateReferenceNumber())
                 .fromAccountId(request.getFromAccountId())
                 .toAccountId(request.getToAccountId())
                 .fromCustomerId(fromAccount.getCustomerId())
@@ -73,12 +76,20 @@ public class TransactionServiceImpl implements TransactionService {
                 .toBranchId(toAccount.getBranchId())
                 .amount(request.getAmount())
                 .transactionType(request.getTransactionType())
-                .status(TransactionStatus.SUCCESS)
                 .description(request.getDescription())
                 .build();
 
+        if(failureReason == null){
+            transaction.setStatus(TransactionStatus.SUCCESS);
+            log.info("Transaction {} completed successfully", transaction.getId());
+        }
+        else{
+            transaction.setStatus(TransactionStatus.FAILED);
+            transaction.setFailureReason(failureReason);
+            log.warn("Transaction failed: {}", failureReason);
+        }
+
         transaction = transactionRepository.save(transaction);
-        log.info("Transaction {} completed successfully", transaction.getId());
         return toResponse(transaction);
     }
 
@@ -117,40 +128,54 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    // ── 2. Customer: all transaction history ─────────────────────────────────
+    // ---- Validates if a transaction can be processed based on business rules (e.g. sufficient balance, daily limits) ----
+    private String validateTransactionCanBeProcessed(AccountDto fromAccount, TransactionRequest request){
+
+        // 1. if from account is blocked
+        if("BLOCKED".equals(fromAccount.getAccountStatus())){
+            return "Account is blocked and cannot send transactions";
+        }
+
+        // 2. Check insufficient balance
+        if(fromAccount.getBalance() != null && fromAccount.getBalance().compareTo(request.getAmount()) < 0){
+            return "Insufficient balance. Available: " + fromAccount.getBalance() + ", Required: " + request.getAmount();
+        }
+
+        // 3. check daily limit
+
+        return null;
+    }
+
+    // ── 2. Customer: all transaction history (account-specific) ────────────────
 
     @Override
     public List<TransactionResponse> getTransactionHistory(AuthenticatedUser user) {
-        Long customerId = resolveCustomerId(user.getAccountId());
-        return transactionRepository.findAllByCustomerId(customerId)
+        return transactionRepository.findAllByAccountId(user.getAccountId())
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── 3. Customer: incoming (credit) ───────────────────────────────────────
+    // ── 3. Customer: incoming (credit) (account-specific) ──────────────────────
 
     @Override
     public List<TransactionResponse> getIncomingTransactions(AuthenticatedUser user) {
-        Long customerId = resolveCustomerId(user.getAccountId());
-        return transactionRepository.findByToCustomerId(customerId)
+        return transactionRepository.findByToAccountId(user.getAccountId())
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── 4. Customer: outgoing (debit) ────────────────────────────────────────
+    // ── 4. Customer: outgoing (debit) (account-specific) ───────────────────────
 
     @Override
     public List<TransactionResponse> getOutgoingTransactions(AuthenticatedUser user) {
-        Long customerId = resolveCustomerId(user.getAccountId());
-        return transactionRepository.findByFromCustomerId(customerId)
+        return transactionRepository.findByFromAccountId(user.getAccountId())
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── 5. Customer: date range ───────────────────────────────────────────────
+    // ── 5. Customer: date range (account-specific) ────────────────────────────
 
     @Override
     public List<TransactionResponse> getTransactionHistoryByDateRange(
             AuthenticatedUser user, LocalDateTime from, LocalDateTime to) {
-        Long customerId = resolveCustomerId(user.getAccountId());
-        return transactionRepository.findByCustomerIdAndDateRange(customerId, from, to)
+        return transactionRepository.findByAccountIdAndCreatedAtBetween(user.getAccountId(), from, to)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
@@ -207,21 +232,25 @@ public class TransactionServiceImpl implements TransactionService {
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
-    // ── 10. Customer: by transaction type ────────────────────────────────────
+    // ── 10. Customer: by transaction type (account-specific) ──────────────────
 
     @Override
     public List<TransactionResponse> getTransactionHistoryByType(AuthenticatedUser user, TransactionType type) {
-        Long customerId = resolveCustomerId(user.getAccountId());
-        return transactionRepository.findByCustomerIdAndType(customerId, type)
+        return transactionRepository.findByAccountIdAndType(user.getAccountId(), type)
                 .stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private Long resolveCustomerId(Long accountId) {
-        return accountServiceClient.getAccountById(accountId)
-                .orElseThrow(() -> new AccountNotFoundException("Account not found: " + accountId))
-                .getCustomerId();
+    /**
+     * Generates a unique reference number in format: TXN + yyyyMMddHHmmssSSS + 6-digit random number
+     * Example: TXN202505011205301234567890
+     */
+    private String generateReferenceNumber() {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
+        String timestamp = LocalDateTime.now().format(formatter);
+        int randomNumber = ThreadLocalRandom.current().nextInt(100000, 999999);
+        return "TXN" + timestamp + randomNumber;
     }
 
     private TransactionResponse toResponse(Transaction t) {
@@ -238,6 +267,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .transactionType(t.getTransactionType())
                 .status(t.getStatus())
                 .description(t.getDescription())
+                .failureReason(t.getFailureReason())
                 .createdAt(t.getCreatedAt())
                 .build();
     }

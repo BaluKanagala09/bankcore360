@@ -1,33 +1,22 @@
 package org.cts.transactionservice.stub;
 
 import org.cts.transactionservice.dto.response.CustomerDto;
-import org.springframework.stereotype.Service;
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+/** * Feign client for communicating with Customer Service. * Calls the customer-service microservice. */
+@FeignClient(
+        name = "customer-service",
+        url = "${customer-service.url:http://localhost:9083}"  // Configure in application.yaml
+)
+public interface CustomerServiceClient {
 
-/**
- * Stub simulating CustomerService communication.
- * In production this would be a Feign client calling the customer-service.
- */
-@Service
-public class CustomerServiceClient {
+    /**     * Fetch customer details by customer ID     */
+    @GetMapping("/api/v1/customers/{customerId}")
+    CustomerDto getCustomerById(@PathVariable("customerId") Long customerId);
 
-    private static final Map<Long, CustomerDto> CUSTOMERS = new HashMap<>();
-
-    static {
-        CUSTOMERS.put(1L, new CustomerDto(1L, "Alice Johnson", "alice@example.com"));
-        CUSTOMERS.put(2L, new CustomerDto(2L, "Bob Smith", "bob@example.com"));
-        CUSTOMERS.put(3L, new CustomerDto(3L, "Charlie Brown", "charlie@example.com"));
-    }
-
-    public Optional<CustomerDto> getCustomerById(Long customerId) {
-        return Optional.ofNullable(CUSTOMERS.get(customerId));
-    }
-
-    public boolean customerExists(Long customerId) {
-        return CUSTOMERS.containsKey(customerId);
-    }
+    /**     * Check if a customer exists     */
+    @GetMapping("/api/v1/customers/{customerId}/exists")
+    boolean customerExists(@PathVariable("customerId") Long customerId);
 }
-
