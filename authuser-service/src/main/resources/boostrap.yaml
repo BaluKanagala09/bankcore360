@@ -1,13 +1,9 @@
-spring:
-  application:
-    name: customer-service
+application:
+  name: {svc}
+  config:
+    import: optional:configserver:http://localhost:8888
 
-#  cloud:
-#    config:
-#      enabled: false
-#      import-check:
-#        enabled: false
-
+# Eureka location for service discovery
 eureka:
   client:
     service-url:
@@ -17,6 +13,7 @@ eureka:
     lease-renewal-interval-in-seconds: 10
     lease-expiration-duration-in-seconds: 30
 
+# Actuator
 management:
   endpoints:
     web:
@@ -26,15 +23,20 @@ management:
     health:
       show-details: always
 
+# Resilience4j Circuit Breaker defaults for all WebClient calls
 resilience4j:
   circuitbreaker:
     instances:
-      authService:
+      default:
         sliding-window-size: 10
         failure-rate-threshold: 50
         wait-duration-in-open-state: 10s
         permitted-number-of-calls-in-half-open-state: 3
+        record-exceptions:
+          - java.net.ConnectException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
   timelimiter:
     instances:
-      authService:
+      default:
         timeout-duration: 5s

@@ -32,6 +32,9 @@ public class CustomerInfo extends Auditable {
     @Column(unique = true, length = 14)
     private String aadhar;
 
+    @Column(unique=true,nullable = false)
+    private String email;
+
     @Column(unique = true, length = 10)
     private String pan;
 

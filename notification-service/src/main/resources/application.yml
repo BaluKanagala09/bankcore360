@@ -1,0 +1,57 @@
+
+server:
+  port: 8085
+
+
+spring:
+  application:
+    name: notification-service
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:mysql://localhost:3306/notification_db
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.MySQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+    consumer:
+      group-id: notification-service-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        spring.json.trusted.packages: org.com.cts.notificationservice.dto
+
+        spring.json.use.type.headers: false
+        spring.json.value.default.type: org.com.cts.notificationservice.dto.NotificationEvent
+
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: bankcore360@gmail.com
+    password: bnnf klzz iumk airj
+    protocol: smtp
+
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000

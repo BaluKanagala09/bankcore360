@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 // CFD
 //import org.cts.bankcore360.modules.branch.entity.Branch;
 //import org.cts.bankcore360.modules.branch.repository.BranchRepository;
+import org.cts.customerservice.client.AuthClient;
+import org.cts.customerservice.config.NotificationEventProducer;
 import org.cts.customerservice.dto.*;
 import org.cts.customerservice.entity.Address;
 import org.cts.customerservice.entity.Customer;
@@ -22,12 +24,12 @@ import org.cts.customerservice.exception.ResourceNotFoundException;
 //import org.cts.bankcore360.modules.user.enums.UserStatus;
 //import org.cts.bankcore360.modules.user.repository.UserRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -37,8 +39,10 @@ public class CustomerService {
 
     private final CustomerRepository customerRepository;   // single repo — no CustomerInfoRepository
 //    private final UserRepository userRepository;    CFD
-    private final PasswordEncoder passwordEncoder;
+//    private final PasswordEncoder passwordEncoder; CFD
 //    private final BranchRepository branchRepository;   CFD
+    private final NotificationEventProducer notificationEventProducer;
+    private final AuthClient authClient;
 
     // ════════════════════════════════════════════════════════════════
     // REGISTRATION
@@ -59,16 +63,10 @@ public class CustomerService {
     public CustomerResponse registerCustomer(CustomerRegistrationRequest request) {
         log.info("Registering customer — email: {}", request.getEmail());
 
-        Branch branch=branchRepository.findById(request.getBranchId()).orElseThrow(
-                ()-> new ResourceNotFoundException("Branch","id",request.getBranchId())
-        );
-        // Prevent re-registration even if previous account was soft-deleted
-        if (customerRepository.existsByEmailIncludingDeleted(request.getEmail())) {
-            throw new DuplicateResourceException(
-                    "An account already exists with email: " + request.getEmail()
-                            + ". Contact support if this account was deleted.");
-        }
-
+//        CFD
+//        Branch branch=branchRepository.findById(request.getBranchId()).orElseThrow(
+//                ()-> new ResourceNotFoundException("Branch","id",request.getBranchId())
+//        );
         String maskedAadhar = maskAadhar(request.getAadhar());
 
         if (customerRepository.existsByInfoAadhar(maskedAadhar)) {
@@ -82,18 +80,19 @@ public class CustomerService {
         }
 
         // 1. Create login User
-        User user = User.builder()
-                .email(request.getEmail())
-                .password(passwordEncoder.encode(request.getPassword()))
-                .role(UserRole.CUSTOMER)
-                .status(UserStatus.ACTIVE)
-                .branch(branch)
-                .build();
-        User savedUser = userRepository.save(user);
+       UserResponse user=authClient.createCustomerUser(
+              Map.of(
+                      "email",request.getEmail(),
+                      "password",request.getPassword(),
+                      "fullName", request.getFirstName() + " " + request.getLastName(),
+                      "phoneNumber", request.getPhoneNumber()
+              )
+       ).getData();
 
         // 2. Customer shell
         Customer customer = Customer.builder()
-                .user(savedUser)
+                .userId(user.getId())
+                .branchId(user.getBranchId())
                 .kycStatus(KycStatus.PENDING)
                 .build();
 
@@ -130,6 +129,14 @@ public class CustomerService {
         // 5. Single save — cascade handles CustomerInfo and Addresses (no extra repo)
         Customer saved = customerRepository.save(customer);
 
+        // Notification Logic
+        notificationEventProducer.publish(
+                NotificationEvent.builder()
+                        .eventType("CUSTOMER_REGISTERED")
+                        .customerId(saved.getCustomerId())
+                        .timestamp(LocalDateTime.now())
+                .build()
+        );
         log.info("Customer registered — customerId={}", saved.getCustomerId());
         return toResponse(saved);
     }
@@ -182,6 +189,15 @@ public class CustomerService {
 
         customer.setKycStatus(newStatus);
         customerRepository.save(customer);
+
+        //Notification Logic
+        notificationEventProducer.publish(
+                NotificationEvent.builder()
+                        .eventType("KYC_APPROVED")
+                        .customerId(customerId)
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
 
         log.info("KYC updated — customerId={} → {}", customerId, newStatus);
         return toResponse(customer);
@@ -352,10 +368,7 @@ public class CustomerService {
     /** Maps Customer → CustomerResponse DTO. */
     private CustomerResponse toResponse(Customer c) {
         CustomerInfo info = c.getInfo();
-        Long branchId = null;
-        if (c.getUser() != null && c.getUser().getBranch() != null) {
-            branchId = c.getUser().getBranch().getId();
-        }
+        Long branchId=c.getBranchId();
         List<AddressResponse> addrList = c.getAddresses() == null ? List.of()
                 : c.getAddresses().stream()
                 .map(a -> AddressResponse.builder()
@@ -372,7 +385,7 @@ public class CustomerService {
         return CustomerResponse.builder()
                 .customerId(c.getCustomerId())
                 .fullName(c.getFullName())
-                .email(c.getUser() != null ? c.getUser().getEmail() : null)
+                .email(null)
                 .branchId(branchId)
                 .kycStatus(c.getKycStatus().name())
                 .dob(info != null ? info.getDob() : null)
@@ -391,7 +404,7 @@ public class CustomerService {
         return CustomerDeletedAuditResponse.builder()
                 .customerId(c.getCustomerId())
                 .fullName(c.getFullName())
-                .email(c.getUser() != null ? c.getUser().getEmail() : null)
+                .email(null)
                 .kycStatus(c.getKycStatus().name())
                 .isDeleted(c.getIsDeleted())
                 .deletedAt(c.getDeletedAt())

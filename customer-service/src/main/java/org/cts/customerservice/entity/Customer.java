@@ -42,6 +42,10 @@ public class Customer extends Auditable {
     @Column(name="user_id",nullable = false)
     private long userId;
 
+
+    @Column(name = "branch_id", nullable = false)
+    private Long branchId;
+
     /** Bidirectional One-to-One mapping with CustomerInfo */
     @OneToOne(mappedBy = "customer", cascade = CascadeType.ALL, fetch = FetchType.LAZY,orphanRemoval = true)
     private CustomerInfo info;

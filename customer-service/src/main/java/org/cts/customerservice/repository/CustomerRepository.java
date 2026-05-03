@@ -51,8 +51,8 @@ public interface CustomerRepository extends JpaRepository<Customer,Long> {
 //            "JOIN customers c ON u.id = c.user_id " +
 //            "WHERE u.email = :email",
 //            nativeQuery = true)
-    @Query("SELECT COUNT(u) > 0 FROM User u WHERE u.email = :email")
-    boolean existsByEmailIncludingDeleted(@Param("email") String email);
+//    @Query("SELECT COUNT(u) > 0 FROM User u WHERE u.email = :email")
+//    boolean existsByEmailIncludingDeleted(@Param("email") String email);
 
     /**
      * Bulk soft-delete all customers in a branch (used when deactivating a branch).
@@ -60,8 +60,13 @@ public interface CustomerRepository extends JpaRepository<Customer,Long> {
      * Use only for bulk operations; prefer entity-level softDelete() for single records.
      */
     @Modifying
-    @Query("UPDATE Customer c SET c.isDeleted = true, c.deletedAt = CURRENT_TIMESTAMP, " +
-            "c.deletedBy = :deletedBy WHERE c.user.branch.id = :branchId")
+    @Query("""
+    UPDATE Customer c
+    SET c.isDeleted = true,
+        c.deletedAt = CURRENT_TIMESTAMP,
+        c.deletedBy = :deletedBy
+    WHERE c.branchId = :branchId
+""")
     int softDeleteAllByBranchId(@Param("branchId") Long branchId,
                                 @Param("deletedBy") String deletedBy);
 
