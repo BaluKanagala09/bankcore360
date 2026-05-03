@@ -8,15 +8,16 @@ import org.cts.transactionservice.dto.response.TransactionResponse;
 import org.cts.transactionservice.entity.Transaction;
 import org.cts.transactionservice.enums.TransactionStatus;
 import org.cts.transactionservice.enums.TransactionType;
-import org.cts.transactionservice.exception.AccountNotFoundException;
+import org.cts.transactionservice.dto.request.BalanceUpdateRequest;
 import org.cts.transactionservice.exception.AccountOwnershipException;
 import org.cts.transactionservice.exception.BranchAccessDeniedException;
 import org.cts.transactionservice.exception.BranchNotFoundException;
 import org.cts.transactionservice.exception.InvalidTransactionException;
+import org.cts.transactionservice.mapper.AccountMapper;
 import org.cts.transactionservice.repository.TransactionRepository;
 import org.cts.transactionservice.security.AuthenticatedUser;
-import org.cts.transactionservice.stub.AccountServiceClient;
-import org.cts.transactionservice.stub.BranchServiceClient;
+import org.cts.transactionservice.clients.AccountServiceClient;
+import org.cts.transactionservice.clients.BranchServiceClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +35,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final TransactionRepository transactionRepository;
     private final AccountServiceClient accountServiceClient;
     private final BranchServiceClient branchServiceClient;
+    private final AccountMapper accountMapper;
 
     // ── 1. Perform Transaction ────────────────────────────────────────────────
 
@@ -48,10 +50,11 @@ public class TransactionServiceImpl implements TransactionService {
                     "You can only perform transactions from your own account (accountId=" + user.getAccountId() + ")");
         }
 
-        AccountDto fromAccount = accountServiceClient.getAccountById(request.getFromAccountId());
+        // Fetch and convert AccountResponse from Account Service to AccountDto
+        AccountDto fromAccount = accountMapper.toAccountDto(accountServiceClient.getAccountById(request.getFromAccountId()));
 //                .orElseThrow(() -> new AccountNotFoundException("Source account not found: " + request.getFromAccountId()));
 
-        AccountDto toAccount = accountServiceClient.getAccountById(request.getToAccountId());
+        AccountDto toAccount = accountMapper.toAccountDto(accountServiceClient.getAccountById(request.getToAccountId()));
 //                .orElseThrow(() -> new AccountNotFoundException("Destination account not found: " + request.getToAccountId()));
 
         if (!branchServiceClient.branchExists(fromAccount.getBranchId())) {
@@ -81,7 +84,39 @@ public class TransactionServiceImpl implements TransactionService {
 
         if(failureReason == null){
             transaction.setStatus(TransactionStatus.SUCCESS);
-            log.info("Transaction {} completed successfully", transaction.getId());
+
+            // ── Update account balances after successful transaction ──────────
+            try {
+                // Debit the source account
+                accountServiceClient.updateBalance(
+                    BalanceUpdateRequest.builder()
+                        .accountId(request.getFromAccountId())
+                        .amount(request.getAmount())
+                        .type("DEBIT")
+                        .reason("Transaction to account " + request.getToAccountId())
+                        .build()
+                );
+                log.info("Debited account {} with amount {}", request.getFromAccountId(), request.getAmount());
+
+                // Credit the destination account
+                accountServiceClient.updateBalance(
+                    BalanceUpdateRequest.builder()
+                        .accountId(request.getToAccountId())
+                        .amount(request.getAmount())
+                        .type("CREDIT")
+                        .reason("Transaction from account " + request.getFromAccountId())
+                        .build()
+                );
+                log.info("Credited account {} with amount {}", request.getToAccountId(), request.getAmount());
+
+            } catch (Exception e) {
+                // If balance update fails, mark transaction as failed but still save it for audit
+                log.error("Failed to update account balances for transaction: {}", e.getMessage());
+                transaction.setStatus(TransactionStatus.FAILED);
+                transaction.setFailureReason("Balance update failed: " + e.getMessage());
+            }
+
+            log.info("Transaction {} completed with status: {}", transaction.getId(), transaction.getStatus());
         }
         else{
             transaction.setStatus(TransactionStatus.FAILED);
@@ -132,7 +167,7 @@ public class TransactionServiceImpl implements TransactionService {
     private String validateTransactionCanBeProcessed(AccountDto fromAccount, TransactionRequest request){
 
         // 1. if from account is blocked
-        if("BLOCKED".equals(fromAccount.getAccountStatus())){
+        if("BLOCKED".equals(fromAccount.getAccountStatus()) || "CLOSED".equals(fromAccount.getAccountStatus())){
             return "Account is blocked and cannot send transactions";
         }
 

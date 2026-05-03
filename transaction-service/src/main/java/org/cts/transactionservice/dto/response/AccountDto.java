@@ -18,7 +18,12 @@ public class AccountDto {
     private Long customerId;
     private Long branchId;
     private BigDecimal balance;
-    private AccountType accountType;
-    private AccountStatus accountStatus;
+//    private String accountType;
+    private String accountStatus;
+
+    // ── New fields for Loan Service ──────────────────────────
+    private Integer salaryCreditCountLast6Months;
+    private Integer salaryMissedMonths;
+    private Integer recentOverdraftCount;
 }
 

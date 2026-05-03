@@ -34,8 +34,8 @@ account-service:
 branch-service:
   url: http://localhost:9082
 
-customer-service:
-  url: http://localhost:9083
+loan-service:
+  url: http://localhost:9084
 
 #eureka:
 #  client:
